@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>DEPOT</title>
+<style>
+  :root { --amber: #ffb43c; --amber-dim: rgba(255,180,60,0.55); --panel: rgba(10,10,8,0.45); }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; font-family: Verdana, Tahoma, sans-serif; user-select: none; }
+  body.playing { cursor: none; }
+  canvas#game { display: block; width: 100vw; height: 100vh; image-rendering: pixelated; }
+
+  #hud { position: fixed; inset: 0; pointer-events: none; display: none; }
+  #hud.on { display: block; }
+  .panel { position: absolute; background: var(--panel); border-radius: 8px; padding: 6px 16px 8px; color: var(--amber); text-shadow: 0 0 8px rgba(255,160,40,0.6); }
+  .panel .lbl { font-size: 11px; letter-spacing: 2px; opacity: 0.8; font-weight: bold; }
+  .panel .big { font-size: 44px; font-weight: bold; line-height: 1; font-family: "Arial Black", Verdana, sans-serif; }
+  .panel .small { font-size: 20px; font-weight: bold; opacity: 0.75; margin-left: 10px; }
+  #healthPanel { left: 24px; bottom: 24px; }
+  #healthPanel.low { color: #ff4a3a; text-shadow: 0 0 10px rgba(255,40,30,0.8); }
+  #ammoPanel { right: 24px; bottom: 24px; text-align: right; }
+  #enemyPanel { right: 24px; top: 20px; padding: 4px 14px 6px; }
+  #enemyPanel .big { font-size: 24px; }
+  #zonePanel { left: 24px; top: 46px; padding: 4px 14px 6px; display: none; max-width: 340px; }
+  #zonePanel.on { display: block; }
+  #zoneLine { font-size: 13px; font-weight: bold; letter-spacing: 1px; margin-top: 2px; }
+  #zoneLine.done { color: #7ad08a; text-shadow: 0 0 8px rgba(80,200,110,0.6); }
+  .charges { font-size: 16px; font-weight: bold; margin-left: 12px; opacity: 0.9; display: none; }
+  .charges.on { display: inline; }
+
+  #crosshair { position: absolute; left: 50%; top: 50%; width: 0; height: 0; }
+  /* white with a dark outline, so it reads on any background and never looks like the amber guide markers */
+  #crosshair { z-index: 5; }
+  #crosshair i { position: absolute; background: #fff; outline: 1px solid rgba(0,0,0,0.85); box-shadow: 0 0 3px rgba(0,0,0,0.9); }
+  #crosshair .t { width: 2px; height: 10px; left: -1px; }
+  #crosshair .b { width: 2px; height: 10px; left: -1px; }
+  #crosshair .l { height: 2px; width: 10px; top: -1px; }
+  #crosshair .r { height: 2px; width: 10px; top: -1px; }
+  #crosshair .d { width: 3px; height: 3px; left: -1.5px; top: -1.5px; border-radius: 50%; }
+  #hitmarker { position: absolute; left: 50%; top: 50%; width: 26px; height: 26px; margin: -13px 0 0 -13px; opacity: 0; }
+  #hitmarker::before, #hitmarker::after { content: ""; position: absolute; left: 12px; top: 0; width: 2px; height: 26px; background: #fff; transform: rotate(45deg); box-shadow: 0 0 3px #000; }
+  #hitmarker::after { transform: rotate(-45deg); }
+  #hitmarker.head::before, #hitmarker.head::after { background: #ff3b2f; }
+
+  #damage { position: absolute; inset: 0; background: radial-gradient(ellipse at center, rgba(160,0,0,0) 40%, rgba(170,0,0,0.75) 100%); opacity: 0; }
+  #dmgdirs { position: absolute; left: 50%; top: 50%; }
+  .dmgdir { position: absolute; left: -60px; top: -170px; width: 120px; height: 40px; transform-origin: 60px 170px;
+            background: radial-gradient(ellipse at 50% 100%, rgba(255,30,20,0.85), rgba(255,30,20,0) 70%); border-radius: 50% 50% 0 0; }
+  #nadewarns { position: absolute; left: 50%; top: 50%; }
+  .nadewarn { position: absolute; left: -18px; top: -18px; width: 36px; height: 36px; border-radius: 50%;
+              background: rgba(200,20,10,0.75); border: 2px solid #ffcf70; box-shadow: 0 0 12px rgba(255,60,20,0.9);
+              color: #fff; font: bold 22px "Arial Black", sans-serif; text-align: center; line-height: 32px; animation: pulse 0.4s infinite; }
+  #laserwarns { position: absolute; left: 50%; top: 50%; }
+  .laserwarn { position: absolute; left: -17px; top: -17px; width: 34px; height: 34px; border-radius: 50%;
+               border: 2px solid #ff3020; box-shadow: 0 0 14px rgba(255,30,10,0.9); color: #ff5040;
+               font: bold 24px Verdana, sans-serif; text-align: center; line-height: 30px; animation: pulse 0.25s infinite; }
+  #intelwarns { position: absolute; left: 50%; top: 50%; }
+  .intelwarn { position: absolute; left: -15px; top: -15px; width: 30px; height: 30px; border-radius: 50%;
+               border: 2px solid #7cff8a; box-shadow: 0 0 12px rgba(80,255,110,0.7); color: #9cffa8;
+               font: bold 16px Verdana, sans-serif; text-align: center; line-height: 26px; animation: pulse 0.9s infinite; }
+  #lift { position: absolute; left: 50%; bottom: 74px; transform: translateX(-50%); display: none; text-align: center; padding: 6px 14px 8px; }
+  #lift .floors { display: flex; gap: 5px; justify-content: center; margin: 5px 0; }
+  #lift .floors i { font-style: normal; font-weight: bold; font-size: 15px; width: 28px; line-height: 26px; border-radius: 50%;
+                    border: 2px solid rgba(255,180,60,0.25); opacity: 0.6; }
+  #lift .floors i.cur { background: rgba(255,180,60,0.85); color: #1a1000; opacity: 1; text-shadow: none; }
+  #lift .floors i.tgt { border-color: var(--amber); opacity: 1; }
+  /* a tall building: the floor buttons wrap into a grid, ground at the bottom left like a real lift panel */
+  #lift.tall .floors { flex-wrap: wrap-reverse; max-width: 352px; margin: 5px auto; gap: 3px; }
+  #lift.tall .floors i { width: 30px; line-height: 22px; font-size: 12px; }
+  #weaponbar { position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%); display: flex; gap: 6px; }
+  #weaponbar span { background: var(--panel); border-radius: 5px; padding: 4px 10px; font-size: 11px; letter-spacing: 1.5px; font-weight: bold;
+                    color: var(--amber); opacity: 0.55; text-shadow: 0 0 6px rgba(255,160,40,0.5); border: 1px solid transparent; white-space: nowrap; }
+  #weaponbar span b { margin-right: 6px; opacity: 0.8; }
+  #weaponbar span.none { opacity: 0.2; }
+  #weaponbar span.sel { opacity: 1; border-color: var(--amber-dim); background: rgba(40,28,8,0.6); }
+  #scope { position: absolute; inset: 0; opacity: 0; transition: opacity 0.08s;
+           background: radial-gradient(circle at center, rgba(0,0,0,0) 0, rgba(0,0,0,0) 37vh, rgba(0,0,0,0.85) 37.4vh, #000 39vh); }
+  #scope i { position: absolute; background: rgba(0,0,0,0.9); }
+  #scope .h { left: calc(50% - 37vh); width: 74vh; top: 50%; height: 2px; margin-top: -1px; }
+  #scope .v { top: 13vh; height: 74vh; left: 50%; width: 2px; margin-left: -1px; }
+  #scope .dot { left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px 0 0 -2px; border-radius: 50%; background: #ff2a1a; box-shadow: 0 0 4px #ff2a1a; }
+  .nade { font-size: 20px; font-weight: bold; margin-left: 14px; opacity: 0.9; }
+  .nade::before { content: "\25C6 "; font-size: 15px; }
+  .nade.empty, .empty > .nade { opacity: 0.35; }
+  #message { position: absolute; left: 0; right: 0; top: 62%; text-align: center; color: var(--amber); font-size: 18px; font-weight: bold; text-shadow: 0 0 6px #000; opacity: 0; transition: opacity 0.3s; }
+
+  .screen { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; flex-direction: column;
+            background: radial-gradient(ellipse at center, rgba(0,0,0,0.55), rgba(0,0,0,0.9)); color: #ddd; text-align: center; cursor: pointer; }
+  .screen.on { display: flex; }
+  .screen h1 { font-family: "Arial Black", Impact, sans-serif; font-size: 96px; letter-spacing: 18px; margin: 0; color: var(--amber); text-shadow: 0 0 24px rgba(255,140,30,0.6), 0 4px 0 #3a2000; }
+  .screen h2 { font-family: "Arial Black", Impact, sans-serif; font-size: 52px; letter-spacing: 8px; margin: 0 0 12px; color: var(--amber); }
+  .screen .sub { font-size: 14px; letter-spacing: 6px; color: #aaa; margin-bottom: 40px; }
+  .screen .go { font-size: 20px; font-weight: bold; color: #fff; animation: pulse 1.4s infinite; margin-top: 36px; }
+  .screen table { margin: 0 auto; font-size: 15px; border-spacing: 22px 6px; color: #ccc; text-align: left; }
+  .screen table td:first-child { color: #888; letter-spacing: 2px; }
+  #difficulty { display: flex; gap: 10px; margin: 0 0 28px; }
+  #difficulty span { padding: 7px 18px; border: 2px solid #555; border-radius: 6px; color: #888; font-weight: bold; letter-spacing: 3px; font-size: 14px; }
+  #difficulty span:hover { border-color: #aaa; color: #ccc; }
+  #worlds { display: flex; gap: 14px; margin: 0 0 16px; }
+  #worlds span { padding: 9px 22px 7px; border: 2px solid #555; border-radius: 6px; color: #888; font-weight: bold; letter-spacing: 4px; font-size: 16px; min-width: 190px; }
+  #worlds span small { display: block; font-size: 10px; letter-spacing: 2px; margin-top: 3px; opacity: 0.75; font-weight: normal; }
+  #worlds span:hover { border-color: #aaa; color: #ccc; }
+  #worlds span.sel { border-color: var(--amber); color: var(--amber); background: rgba(255,180,60,0.1); }
+  #weather { display: flex; gap: 8px; margin: -16px 0 24px; align-items: center; }
+  #weather > i { font-style: normal; font-size: 10px; letter-spacing: 3px; color: #777; margin-right: 4px; }
+  #weather span { padding: 4px 12px; border: 1px solid #555; border-radius: 5px; color: #888; font-weight: bold; letter-spacing: 2px; font-size: 11px; }
+  #weather span:hover { border-color: #aaa; color: #ccc; }
+  #weather span.sel { border-color: var(--amber); color: var(--amber); background: rgba(255,180,60,0.1); }
+  #difficulty span.sel { border-color: var(--amber); color: var(--amber); background: rgba(255,180,60,0.1); }
+  .volBox { display: flex; gap: 18px; margin: 0 0 22px; padding: 8px 16px; border: 1px solid #444; border-radius: 6px; background: rgba(0,0,0,0.35); }
+  .volBox label { display: flex; flex-direction: column; align-items: center; font-size: 10px; letter-spacing: 2px; color: #999; gap: 4px; cursor: default; }
+  .volBox label b { color: var(--amber); font-weight: bold; }
+  .volBox input[type=range] { width: 110px; accent-color: var(--amber); cursor: pointer; }
+  .hint { font-size: 12px; color: #777; letter-spacing: 2px; margin-top: 10px; }
+  .keys { font-size: 13px; line-height: 1.55; color: #999; columns: 2; column-gap: 28px; text-align: left; }
+  .keys b { color: var(--amber); display: inline-block; min-width: 128px; text-align: right; margin-right: 12px; }
+  .keys div { break-inside: avoid; }
+  #objPanel { left: 50%; top: 16px; transform: translateX(-50%); text-align: center; padding: 5px 18px 7px; display: none; min-width: 300px; }
+  #objPanel.on { display: block; }
+  #objPanel .lbl { font-size: 10px; }
+  #objLine { font-size: 15px; font-weight: bold; letter-spacing: 2px; margin-top: 2px; }
+  #objClock { font-family: "Arial Black", Verdana, sans-serif; font-size: 22px; line-height: 1.1; }
+  #objClock.low { color: #ff4a3a; text-shadow: 0 0 10px rgba(255,40,30,0.8); animation: pulse 0.8s infinite; }
+  #objPanel.alarm .lbl#objRing { color: #ff4a3a; }
+  #prompt { position: absolute; left: 50%; top: 56%; transform: translateX(-50%); text-align: center; white-space: nowrap; color: #fff; font-weight: bold;
+            letter-spacing: 2px; font-size: 15px; text-shadow: 0 0 6px #000; display: none; }
+  #prompt .bar { width: 220px; height: 6px; margin: 8px auto 0; background: rgba(255,255,255,0.2); border-radius: 3px; overflow: hidden; }
+  #prompt .bar i { display: block; height: 100%; width: 0; background: var(--amber); }
+  /* waypoints: on the spot itself when it's in view, an arrow at the screen edge (pointing the way to turn) when not */
+  .wp { position: absolute; left: 0; top: 0; display: none; pointer-events: none; --c: var(--amber); --g: rgba(255,180,60,0.75); }
+  .wp.zone { --c: #7ad0ff; --g: rgba(100,200,255,0.7); }
+  .wp .pin { position: absolute; left: -9px; top: -27px; width: 14px; height: 14px; border: 2px solid var(--c); background: rgba(0,0,0,0.3);
+             transform: rotate(45deg); box-shadow: 0 0 10px var(--g); }
+  .wp .pin::after { content: ""; position: absolute; left: 4px; top: 4px; width: 6px; height: 6px; background: var(--c); }
+  .wp .arrow { position: absolute; left: -15px; top: -15px; width: 30px; height: 30px; background: var(--c);
+               clip-path: polygon(0 0, 100% 50%, 0 100%, 28% 50%); filter: drop-shadow(0 0 4px var(--g)); }
+  .wp span { position: absolute; left: 0; top: 2px; transform: translateX(-50%); white-space: nowrap; color: var(--c);
+             font: bold 12px Verdana, sans-serif; letter-spacing: 1px; text-shadow: 0 0 4px #000, 0 0 2px #000; }
+  .wp.off span { top: 20px; }
+  .wp.off .pin, .wp:not(.off) .arrow { display: none; }
+  .medkit { font-size: 20px; font-weight: bold; margin-left: 12px; color: #7cff8a; text-shadow: 0 0 8px rgba(80,255,110,0.6); display: none; vertical-align: 6px; }
+  .medkit.on { display: inline; }
+  #modes { display: flex; gap: 10px; margin: 0 0 18px; }
+  #modes span { padding: 7px 20px; border: 2px solid #555; border-radius: 6px; color: #888; font-weight: bold; letter-spacing: 3px; font-size: 14px; }
+  #modes span small { display: block; font-size: 10px; letter-spacing: 1px; font-weight: normal; opacity: 0.75; margin-top: 2px; }
+  #modes span:hover { border-color: #aaa; color: #ccc; }
+  #modes span.sel { border-color: var(--amber); color: var(--amber); background: rgba(255,180,60,0.1); }
+  #objStep { font-size: 12px; letter-spacing: 1.5px; margin-top: 4px; color: #fff; opacity: 0.92; text-shadow: 0 0 6px #000; }
+  #objStep b { color: var(--amber); margin-right: 6px; }
+  #briefing { left: 50%; top: 92px; transform: translateX(-50%); width: min(620px, 92vw); padding: 14px 22px 12px; display: none;
+              background: rgba(8,8,6,0.78); border: 1px solid var(--amber-dim); color: #e8e2d4; text-shadow: none; }
+  #briefing.on { display: block; }
+  .brief .bname { font-family: "Arial Black", Verdana, sans-serif; color: var(--amber); font-size: 20px; letter-spacing: 3px; }
+  .brief .bstory { font-size: 13px; line-height: 1.5; margin: 6px 0 8px; color: #cfc8b8; }
+  .brief ol { margin: 0; padding-left: 22px; font-size: 13.5px; line-height: 1.5; text-align: left; }
+  .brief li { margin: 3px 0; opacity: 0.6; }
+  .brief li.cur { opacity: 1; color: #fff; }
+  .brief li.cur::marker { color: var(--amber); font-weight: bold; }
+  .brief li.done { opacity: 0.4; text-decoration: line-through; }
+  .brief .brules { font-size: 11.5px; line-height: 1.55; margin-top: 8px; color: #a9a294; text-align: left; }
+  .brief .brules b { color: var(--amber); font-weight: bold; }
+  .brief .bfoot { font-size: 10.5px; letter-spacing: 2px; margin-top: 8px; color: var(--amber); opacity: 0.8; }
+  #briefTab { position: absolute; left: 24px; top: 20px; font-size: 10.5px; letter-spacing: 2px; color: var(--amber); opacity: 0.7; text-shadow: 0 0 4px #000; }
+  #loadout { cursor: default; }
+  #loadout .sub { margin-bottom: 18px; letter-spacing: 3px; }
+  #loadoutKeys { display: flex; gap: 8px; margin-bottom: 22px; }
+  #loadoutKeys .lk { width: 84px; padding: 8px 0 7px; border: 2px solid #444; border-radius: 6px; cursor: pointer; color: #777; }
+  #loadoutKeys .lk b { display: block; font-size: 22px; color: #999; }
+  #loadoutKeys .lk span { font-size: 10px; letter-spacing: 1.5px; font-weight: bold; }
+  #loadoutKeys .lk.full { color: var(--amber); border-color: #6a5020; }
+  #loadoutKeys .lk.full b { color: #fff; }
+  #loadoutKeys .lk.sel { border-color: var(--amber); background: rgba(255,180,60,0.15); }
+  #loadoutKeys .lk:hover { border-color: #aaa; }
+  #loadoutGuns { display: grid; grid-template-columns: repeat(auto-fill, 180px); gap: 10px; width: min(960px, 92vw); justify-content: center; }
+  #loadoutGuns .lg { display: flex; align-items: center; gap: 10px; text-align: left; padding: 8px 10px; border: 2px solid #444; border-radius: 6px;
+                     background: rgba(8,8,6,0.6); cursor: pointer; }
+  #loadoutGuns .lg:hover { border-color: #aaa; }
+  #loadoutGuns .lg i { font-style: normal; font-size: 22px; font-weight: bold; width: 26px; text-align: center; color: #fff; }
+  #loadoutGuns .lg.nokey i { color: #555; }
+  #loadoutGuns .lg b { display: block; font-size: 12px; letter-spacing: 1px; color: #ddd; }
+  #loadoutGuns .lg small { font-size: 11px; color: #888; }
+  #loadoutGuns .lg.cur b { color: var(--amber); }
+  #loadoutGuns .lg.sel { border-color: var(--amber); background: rgba(255,180,60,0.15); }
+  #loadout .hint { margin-top: 22px; font-size: 12px; letter-spacing: 2px; color: #999; }
+  #loadout .btn { margin-top: 14px; display: inline-block; }
+  #pauseBrief { width: min(640px, 92vw); text-align: left; background: rgba(8,8,6,0.6); border: 1px solid #444; border-radius: 8px; padding: 12px 20px; margin: 0 0 18px; }
+  #pauseBrief:empty { display: none; }
+  #menuBrief { max-width: 620px; font-size: 13px; line-height: 1.5; color: #bbb; margin: -6px 0 18px; min-height: 20px; }
+  #menuBrief b { color: var(--amber); letter-spacing: 2px; }
+  .btn { display: inline-block; margin: 18px 8px 0; padding: 8px 22px; border: 2px solid #777; border-radius: 6px; color: #ddd; font-weight: bold;
+         letter-spacing: 3px; font-size: 14px; cursor: pointer; }
+  #mapHelp { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); display: none; padding: 8px 16px; border-radius: 6px;
+             background: rgba(8,8,6,0.7); border: 1px solid #555; color: #ccc; font-size: 12px; letter-spacing: 1.5px; white-space: nowrap; pointer-events: none; z-index: 20; }
+  #mapHelp.on { display: block; }
+  #mapHelp b { color: var(--amber); }
+  body.mapview canvas { cursor: grab; }
+  body.mapview canvas:active { cursor: grabbing; }
+  .btn:hover { border-color: var(--amber); color: var(--amber); background: rgba(255,180,60,0.1); }
+  #radio { position: absolute; left: 50%; bottom: 120px; transform: translateX(-50%); width: min(720px, 90vw); text-align: center;
+           font-size: 15px; line-height: 1.45; color: #e8f0e0; text-shadow: 0 0 4px #000, 0 0 8px #000; display: none;
+           background: rgba(10,14,10,0.55); border-radius: 6px; padding: 6px 14px 8px; border-left: 3px solid #7cff8a; }
+  #radio.on { display: block; }
+  #radio.ow { border-left-color: #8ec2ff; }
+  #radio b { display: block; font-size: 10.5px; letter-spacing: 2.5px; color: #7cff8a; margin-bottom: 2px; }
+  #radio.ow b { color: #8ec2ff; }
+  @keyframes pulse { 50% { opacity: 0.35; } }
+</style>
+  <script type="module" crossorigin src="./assets/index-DqveG1j9.js"></script>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div id="hud">
+  <div id="crosshair"><i class="t"></i><i class="b"></i><i class="l"></i><i class="r"></i><i class="d"></i></div>
+  <div id="hitmarker"></div>
+  <div id="damage"></div>
+  <div id="dmgdirs"></div>
+  <div id="scope"><i class="h"></i><i class="v"></i><i class="dot"></i></div>
+  <div id="nadewarns"></div>
+  <div id="laserwarns"></div>
+  <div id="intelwarns"></div>
+  <div class="wp obj" id="wpObj"><i class="pin"></i><i class="arrow"></i><span></span></div>
+  <div class="wp zone" id="wpZone"><i class="pin"></i><i class="arrow"></i><span></span></div>
+  <div class="panel" id="objPanel"><div class="lbl" id="objRing">OUTER PERIMETER</div><div id="objLine">COMPUTER CENTER &middot; 140 M</div><div id="objClock">9:00</div><div id="objStep"></div></div>
+  <div class="panel brief" id="briefing"></div>
+  <div id="briefTab">TAB &mdash; BRIEFING</div>
+  <div id="prompt"><span id="promptText">HOLD E</span><div class="bar"><i id="promptBar"></i></div></div>
+  <div class="panel" id="lift"></div>
+  <div id="weaponbar"></div>
+  <div id="message"></div>
+  <div id="radio"></div>
+  <div class="panel" id="healthPanel"><div class="lbl">HEALTH</div><div><span class="big" id="health">100</span><span class="medkit" id="medkit" title="spare medkit: H">&#10010; H</span></div></div>
+  <div class="panel" id="ammoPanel"><div class="lbl" id="weaponName">ASSAULT RIFLE</div><div><span class="big" id="mag">30</span><span class="small" id="reserve">120</span><span class="nade" id="nades">2</span><span class="charges" id="charges" title="demolition charges: V">C4 1</span></div></div>
+  <div class="panel" id="zonePanel"><div class="lbl" id="zoneCount">ZONES 0/12</div><div id="zoneLine"></div></div>
+  <div class="panel" id="enemyPanel"><div class="lbl">HOSTILES</div><div class="big" id="enemies">10</div></div>
+</div>
+
+<div class="screen on" id="menu">
+  <h1>DEPOT</h1>
+  <div class="sub" id="menuSub">CLEAR THE COMPOUND</div>
+  <div id="modes"><span data-m="mission">MISSION<small>REACH THE OBJECTIVE</small></span><span data-m="classic">CLASSIC<small>CLEAR THE MAP</small></span></div>
+  <div id="worlds"><span data-w="depot">DEPOT<small>NIGHT · INDUSTRIAL · TOWERS</small></span><span data-w="town">OLD TOWN<small>DUSK · STREETS &amp; HIGH-RISES</small></span><span data-w="metro">METROPOLIS<small>DUSK · RIVER CITY · SKYSCRAPERS</small></span></div>
+  <div id="menuBrief"></div>
+  <div id="difficulty"><span data-d="easy">EASY</span><span data-d="normal">NORMAL</span><span data-d="hard">HARD</span></div>
+  <div id="weather"><i>WEATHER</i><span data-wx="dynamic">CHANGING</span><span data-wx="clear">CLEAR</span><span data-wx="rain">RAIN</span><span data-wx="snow">SNOW</span></div>
+  <div class="volBox"></div>
+  <div class="keys">
+    <div><b>MOUSE</b>look / fire</div>
+    <div><b>&larr; &rarr; &uarr; &darr;</b>look (keyboard)</div>
+    <div><b>F / ENTER</b>fire (keyboard)</div>
+    <div><b>W A S D</b>move</div>
+    <div><b>SHIFT</b>sprint</div>
+    <div><b>SPACE</b>jump</div>
+    <div><b>C</b>crouch</div>
+    <div><b>R</b>reload</div>
+    <div><b>1&ndash;9 / WHEEL / E</b>switch weapon</div>
+    <div><b>V</b>plant demolition charge</div>
+    <div><b>I</b>loadout: put guns on number keys</div>
+    <div><b>R-CLICK / X</b>aim down the sights (scope on the sniper)</div>
+    <div><b>G</b>throw grenade</div>
+    <div><b>T / B</b>elevator up / down (inside the cab)</div>
+    <div><b>&minus; / =</b>mouse sensitivity</div>
+    <div><b>E (HOLD)</b>objective action</div>
+    <div><b>H</b>use spare medkit</div>
+    <div><b>P</b>first / third-person view</div>
+    <div><b>J</b>guide light (missions)</div>
+    <div><b>Q / L</b>graphics quality / 60 fps cap</div>
+    <div><b>O</b>line-drawing view</div>
+    <div><b>TAB</b>mission briefing (in game)</div>
+    <div><b>ESC</b>pause / quit to menu</div>
+  </div>
+  <div class="go">CLICK OR PRESS ENTER TO DEPLOY</div>
+  <div class="hint">TAB MODE &nbsp;&middot;&nbsp; &uarr; &darr; WORLD &nbsp;&middot;&nbsp; &larr; &rarr; DIFFICULTY</div>
+</div>
+
+<div class="screen" id="pause">
+  <h2>PAUSED</h2>
+  <div class="brief" id="pauseBrief"></div>
+  <div class="sub" id="sens">SENSITIVITY 1.0</div>
+  <div class="volBox"></div>
+  <div class="go">CLICK OR PRESS ENTER TO RESUME</div>
+  <div><span class="btn" id="mapBtn">MAP VIEW &nbsp;[V]</span><span class="btn" id="quitBtn">QUIT TO MAIN MENU &nbsp;[M]</span></div>
+</div>
+
+<div class="screen" id="loadout">
+  <h2>LOADOUT</h2>
+  <div class="sub">PICK A GUN, THEN PRESS 1&ndash;9 TO PUT IT ON THAT KEY</div>
+  <div id="loadoutKeys"></div>
+  <div id="loadoutGuns"></div>
+  <div class="hint">CLICK / ARROWS PICK &nbsp;&middot;&nbsp; 1&ndash;9 OR CLICK A KEY ASSIGN &nbsp;&middot;&nbsp; BACKSPACE CLEAR &nbsp;&middot;&nbsp; ENTER / DOUBLE-CLICK EQUIP &nbsp;&middot;&nbsp; I / ESC BACK</div>
+  <div><span class="btn" id="loadoutDone">BACK TO THE FIGHT &nbsp;[I]</span></div>
+</div>
+
+<div class="screen" id="end">
+  <h2 id="endTitle">MISSION COMPLETE</h2>
+  <table id="stats"></table>
+  <div class="go">CLICK OR PRESS ENTER TO PLAY AGAIN</div>
+  <div><span class="btn" id="menuBtn">MAIN MENU &nbsp;[M]</span></div>
+</div>
+
+</body>
+</html>
